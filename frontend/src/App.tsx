@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 
 type Product = { id: string; sku: string; name: string; description: string; imageUrls: string[]; pricePaise: number; available: number }
 type Cart = Record<string, number>
+type CheckoutResult = { order: { referenceId: string; status: string; currency: string; totalPaise: number }; payment: { id: string; status: string; mockClientSecret: string }; replayed: boolean }
+type ApiError = { error?: { message?: string } }
 const CART_KEY = 'basic-ecommerce-guest-cart'
+const demoToken = import.meta.env.VITE_DEMO_API_TOKEN ?? ''
 const money = (paise: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(paise / 100)
-
 function readCart(): Cart {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(CART_KEY) ?? '{}')
@@ -20,6 +22,10 @@ function App() {
   const [error, setError] = useState('')
   const [cartOpen, setCartOpen] = useState(false)
   const [imageIndexes, setImageIndexes] = useState<Record<string, number>>({})
+  const [demoLoginOpen, setDemoLoginOpen] = useState(false)
+  const [checkoutSubmitting, setCheckoutSubmitting] = useState(false)
+  const [checkoutError, setCheckoutError] = useState('')
+  const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(null)
 
   async function loadProducts() {
     setLoading(true); setError('')
@@ -48,6 +54,28 @@ function App() {
       return next
     })
   }
+  async function submitCheckout() {
+    if (!demoToken) { setCheckoutError('No demo token is configured. Set DEMO_API_TOKEN in .env and rebuild the frontend.'); return }
+    const requestItems = items.map(({ product, quantity }) => ({ productId: product.id, quantity })).sort((a, b) => a.productId.localeCompare(b.productId))
+    const fingerprint = JSON.stringify(requestItems)
+    const storageKey = `checkout-idempotency:${fingerprint}`
+    const idempotencyKey = sessionStorage.getItem(storageKey) ?? crypto.randomUUID()
+    sessionStorage.setItem(storageKey, idempotencyKey)
+    setCheckoutSubmitting(true); setCheckoutError('')
+    try {
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${demoToken}`, 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify({ items: requestItems }),
+      })
+      const payload = await response.json() as CheckoutResult | ApiError
+      if (!response.ok) throw new Error((payload as ApiError).error?.message ?? `Checkout failed (${response.status}).`)
+      sessionStorage.removeItem(storageKey)
+      setCheckoutResult(payload as CheckoutResult); setCart({}); setDemoLoginOpen(false); setCartOpen(false)
+    } catch (cause) {
+      setCheckoutError(cause instanceof Error ? cause.message : 'Checkout failed. Your cart is unchanged; you can safely retry.')
+    } finally { setCheckoutSubmitting(false) }
+  }
 
   return <main className="page-shell">
     <header className="topbar"><a className="brand" href="/">BASIC<span>FIT</span></a><button className="cart-trigger" onClick={() => setCartOpen(true)}>Your cart <strong>{count}</strong></button></header>
@@ -71,9 +99,13 @@ function App() {
       <div className="drawer-heading"><div><p className="eyebrow">YOUR SELECTION</p><h2>Your bag <span>({count})</span></h2></div><button className="close-button" onClick={() => setCartOpen(false)} aria-label="Close cart">×</button></div>
       {!items.length ? <div className="cart-empty"><span className="empty-bag">✳</span><h3>Your bag is taking a breather.</h3><p>Add a few essentials and they’ll be waiting here.</p><button className="dark-button" onClick={() => setCartOpen(false)}>Explore products</button></div> : <>
         <div className="cart-lines">{items.map(({ product, quantity }) => <div className="cart-line" key={product.id}><div className="cart-line-image"><img src={product.imageUrls[0]} alt="" onError={event => { event.currentTarget.style.opacity = '0' }}/></div><div className="cart-line-content"><h3>{product.name}</h3><strong>{money(product.pricePaise * quantity)}</strong><div className="line-controls"><div className="quantity-control"><button aria-label="Decrease quantity" onClick={() => setQuantity(product, quantity - 1)}>−</button><span>{quantity}</span><button aria-label="Increase quantity" disabled={quantity >= Math.min(product.available, 10)} onClick={() => setQuantity(product, quantity + 1)}>+</button></div><button className="remove-button" onClick={() => setQuantity(product, 0)}>Remove</button></div></div></div>)}</div>
-        <div className="cart-summary"><div><span>Subtotal</span><strong>{money(subtotal)}</strong></div><p>Shipping and payment are calculated at checkout.</p><button className="checkout-button" disabled>Continue to checkout <span>→</span></button><button className="continue-link" onClick={() => setCartOpen(false)}>Continue shopping</button></div>
+        <div className="cart-summary"><div><span>Subtotal</span><strong>{money(subtotal)}</strong></div><p>Shipping and payment are calculated at checkout.</p>{checkoutError && !demoLoginOpen && <p className="checkout-error" role="alert">{checkoutError}</p>}
+          <button className="checkout-button" disabled={checkoutSubmitting} onClick={() => { setCheckoutError(''); setDemoLoginOpen(true) }}>{checkoutSubmitting ? 'Creating your order…' : 'Continue to checkout'} <span>→</span></button><button className="continue-link" onClick={() => setCartOpen(false)}>Continue shopping</button>
+        </div>
       </>}
     </aside></div>}
+    {demoLoginOpen && <div className="modal-scrim"><section className="checkout-modal" role="dialog" aria-modal="true" aria-labelledby="demo-login-title"><button className="close-button modal-close" onClick={() => setDemoLoginOpen(false)} aria-label="Close">×</button><p className="eyebrow">CHECKOUT ACCESS</p><h2 id="demo-login-title">Please log in to continue</h2><p>This take-home uses a shared demo bearer token to protect checkout. It is not a personal customer account.</p>{checkoutError && <p className="checkout-error" role="alert">{checkoutError}</p>}<button className="checkout-button" disabled={checkoutSubmitting} onClick={() => void submitCheckout()}>{checkoutSubmitting ? 'Creating your order…' : 'Log in and continue'} <span>→</span></button></section></div>}
+    {checkoutResult && <div className="modal-scrim"><section className="checkout-modal order-created" role="dialog" aria-modal="true" aria-labelledby="order-created-title"><button className="close-button modal-close" onClick={() => setCheckoutResult(null)} aria-label="Close">×</button><span className="order-check">✓</span><p className="eyebrow">ORDER CREATED</p><h2 id="order-created-title">Your order is in.</h2><p>Reference <strong>{checkoutResult.order.referenceId}</strong></p><div className="order-result-row"><span>Order status</span><strong>{checkoutResult.order.status}</strong></div><div className="order-result-row"><span>Payment status</span><strong>{checkoutResult.payment.status}</strong></div><div className="order-result-row"><span>Total</span><strong>{money(checkoutResult.order.totalPaise)}</strong></div><button className="dark-button" onClick={() => setCheckoutResult(null)}>Back to catalog</button></section></div>}
   </main>
 }
 export default App
