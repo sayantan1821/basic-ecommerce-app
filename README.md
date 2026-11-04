@@ -38,7 +38,13 @@ All credentials in `.env.example` are local demo values only.
 }
 ```
 
-Stock is conditionally reserved inside the same PostgreSQL transaction that writes the order, item snapshots, Stripe payment record, and idempotency record. If any item cannot be reserved, the transaction rolls back all stock changes. The payment remains `PENDING` until Stripe reports its outcome through a verified webhook. The frontend passes the shared demo token as a build-time Vite value (`DEMO_API_TOKEN`), which is exposed in the browser bundle by design and must never be treated as a real secret. Checkout shows a demo-access confirmation before sending the request.
+Stock is conditionally reserved inside the same PostgreSQL transaction that writes the order, item snapshots, Stripe payment record, and idempotency record. If any item cannot be reserved, the transaction rolls back all stock changes. The payment remains `PENDING` until Stripe reports its outcome through a verified webhook. The frontend passes the shared demo token as a build-time Vite value (`DEMO_API_TOKEN`), which is exposed in the browser bundle by design and must never be treated as a real secret. On first checkout, the demo access prompt stores that token in local storage so future checkouts do not prompt again. “Sign out” removes the locally stored token. This is a take-home demo session, not production authentication.
+
+## Order status
+
+- The “Your orders” page at `/orders` lists order references created by this browser and retrieves their current order and payment states from the backend.
+- Order references are kept in local storage, so the page can be revisited after closing the tab. Refresh status to retrieve the latest state after Stripe webhook processing.
+- The backend currently uses one shared demo bearer token and does not associate orders with individual users. The browser's order list is therefore a convenience for this demo rather than an account-scoped order history.
 
 ## Stripe test checkout
 

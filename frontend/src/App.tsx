@@ -1,12 +1,29 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CartDrawer } from './components/CartDrawer'
 import { CheckoutAccessModal } from './components/CheckoutAccessModal'
+import { OrderStatusPage } from './components/OrderStatusPage'
 import { PaymentReturnModal } from './components/PaymentReturnModal'
 import { ProductCatalog } from './components/ProductCatalog'
 import type { ApiError, Cart, CartItem, CheckoutResult, OrderStatus, Product, StripeCheckoutSession } from './types/store'
 
 const CART_KEY = 'basic-ecommerce-guest-cart'
+const SESSION_KEY = 'basic-ecommerce-demo-session-token'
+const ORDER_REFERENCES_KEY = 'basic-ecommerce-order-references'
 const demoToken = import.meta.env.VITE_DEMO_API_TOKEN ?? ''
+
+function readOrderReferences(): string[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(ORDER_REFERENCES_KEY) ?? '[]')
+    return Array.isArray(value) ? [...new Set(value.filter((reference): reference is string => typeof reference === 'string' && reference.length > 0))] : []
+  } catch {
+    return []
+  }
+}
+
+function rememberOrder(referenceId: string) {
+  const references = readOrderReferences()
+  if (!references.includes(referenceId)) localStorage.setItem(ORDER_REFERENCES_KEY, JSON.stringify([referenceId, ...references]))
+}
 
 function readCart(): Cart {
   try {
@@ -25,6 +42,9 @@ function App() {
   const [error, setError] = useState('')
   const [cartOpen, setCartOpen] = useState(false)
   const [imageIndexes, setImageIndexes] = useState<Record<string, number>>({})
+  const [sessionToken, setSessionToken] = useState(() => localStorage.getItem(SESSION_KEY) ?? '')
+  const [orderReferences, setOrderReferences] = useState<string[]>(readOrderReferences)
+  const [activePage, setActivePage] = useState(() => window.location.pathname === '/orders' ? 'orders' : 'home')
   const [demoLoginOpen, setDemoLoginOpen] = useState(false)
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false)
   const [checkoutError, setCheckoutError] = useState('')
@@ -56,8 +76,19 @@ function App() {
     const mode = params.get('stripe')
     if (mode !== 'success' && mode !== 'cancelled') return
     setPaymentReturnMode(mode)
-    setPaymentReturnReference(params.get('order') ?? '')
+    const reference = params.get('order') ?? ''
+    setPaymentReturnReference(reference)
+    if (reference) {
+      rememberOrder(reference)
+      setOrderReferences(readOrderReferences())
+    }
     if (mode === 'success') setCart({})
+  }, [])
+
+  useEffect(() => {
+    const onPopState = () => setActivePage(window.location.pathname === '/orders' ? 'orders' : 'home')
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
   }, [])
 
   const items = useMemo<CartItem[]>(() => products.filter(product => cart[product.id] > 0).map(product => ({ product, quantity: cart[product.id] })), [products, cart])
@@ -78,9 +109,14 @@ function App() {
   }
 
   async function submitCheckout() {
-    if (!demoToken) {
+    const token = sessionToken || demoToken
+    if (!token) {
       setCheckoutError('No demo token is configured. Set DEMO_API_TOKEN in .env and rebuild the frontend.')
       return
+    }
+    if (!sessionToken) {
+      localStorage.setItem(SESSION_KEY, token)
+      setSessionToken(token)
     }
     const requestItems = items.map(({ product, quantity }) => ({ productId: product.id, quantity })).sort((a, b) => a.productId.localeCompare(b.productId))
     const fingerprint = JSON.stringify(requestItems)
@@ -92,17 +128,21 @@ function App() {
     try {
       const response = await fetch('/api/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${demoToken}`, 'Idempotency-Key': idempotencyKey },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({ items: requestItems }),
       })
       const payload = await response.json() as CheckoutResult | ApiError
+      if (response.status === 401 || response.status === 403) expireSession()
       if (!response.ok) throw new Error((payload as ApiError).error?.message ?? `Checkout failed (${response.status}).`)
       const checkout = payload as CheckoutResult
+      rememberOrder(checkout.order.referenceId)
+      setOrderReferences(readOrderReferences())
       const sessionResponse = await fetch(`/api/payments/${checkout.payment.id}/stripe-session`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${demoToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       })
       const sessionPayload = await sessionResponse.json() as StripeCheckoutSession | ApiError
+      if (sessionResponse.status === 401 || sessionResponse.status === 403) expireSession()
       if (!sessionResponse.ok) throw new Error((sessionPayload as ApiError).error?.message ?? `Could not start Stripe Checkout (${sessionResponse.status}).`)
       setDemoLoginOpen(false)
       setCartOpen(false)
@@ -127,9 +167,10 @@ function App() {
         const attempts = paymentReturnMode === 'success' ? 20 : 1
         for (let attempt = 0; attempt < attempts; attempt += 1) {
           const response = await fetch(`/api/orders/by-reference/${paymentReturnReference}`, {
-            headers: { Authorization: `Bearer ${demoToken}` },
+            headers: { Authorization: `Bearer ${sessionToken || demoToken}` },
           })
           const payload = await response.json() as OrderStatus | ApiError
+          if (response.status === 401 || response.status === 403) expireSession()
           if (!response.ok) throw new Error((payload as ApiError).error?.message ?? `Could not load order status (${response.status}).`)
           const status = payload as OrderStatus
           if (!active) return
@@ -153,11 +194,38 @@ function App() {
 
     void loadPaymentStatus()
     return () => { active = false; if (timeout) clearTimeout(timeout) }
-  }, [paymentReturnMode, paymentReturnReference])
+  }, [paymentReturnMode, paymentReturnReference, sessionToken])
+
+  const expireSession = useCallback(() => {
+    localStorage.removeItem(SESSION_KEY)
+    setSessionToken('')
+  }, [])
 
   function openCheckoutAccess() {
     setCheckoutError('')
+    if (sessionToken) {
+      void submitCheckout()
+      return
+    }
     setDemoLoginOpen(true)
+  }
+
+  function navigate(path: '/orders' | '/') {
+    window.history.pushState({}, '', path)
+    setActivePage(path === '/orders' ? 'orders' : 'home')
+  }
+
+  function signInDemo() {
+    if (!demoToken) {
+      setCheckoutError('No demo token is configured. Set DEMO_API_TOKEN in .env and rebuild the frontend.')
+      return
+    }
+    localStorage.setItem(SESSION_KEY, demoToken)
+    setSessionToken(demoToken)
+  }
+
+  function signOut() {
+    expireSession()
   }
 
   function closePaymentReturn() {
@@ -169,11 +237,22 @@ function App() {
 
   return <main className="page-shell">
     <header className="topbar">
-      <a className="brand" href="/">BASIC<span>FIT</span></a>
-      <button className="cart-trigger" onClick={() => setCartOpen(true)}>Your cart <strong>{count}</strong></button>
+      <a className="brand" href="/" onClick={event => { event.preventDefault(); navigate('/') }}>BASIC<span>FIT</span></a>
+      <nav className="topbar-actions" aria-label="Main navigation">
+        <a className={`nav-link ${activePage === 'orders' ? 'active' : ''}`} href="/orders" onClick={event => { event.preventDefault(); navigate('/orders') }}>Your orders</a>
+        {sessionToken && <button className="nav-link sign-out" onClick={signOut}>Sign out</button>}
+        <button className="cart-trigger" onClick={() => setCartOpen(true)}>Your cart <strong>{count}</strong></button>
+      </nav>
     </header>
 
-    <section className="hero">
+    {activePage === 'orders' ? <OrderStatusPage
+      references={orderReferences}
+      token={sessionToken}
+      loginError={checkoutError}
+      onSignIn={signInDemo}
+      onSessionExpired={expireSession}
+      onBack={() => navigate('/')}
+    /> : <><section className="hero">
       <p className="eyebrow">THE EVERYDAY EDIT</p>
       <h1>Little things.<br /><em>Big difference.</em></h1>
       <p className="intro">A considered collection of everyday essentials, picked for you.</p>
@@ -192,7 +271,7 @@ function App() {
       onAdd={product => { setQuantity(product, 1); setCartOpen(true) }}
     />
 
-    <footer><span>BASICFIT</span><span>Built for everyday essentials.</span></footer>
+    <footer><span>BASICFIT</span><span>Built for everyday essentials.</span></footer></>}
 
     <CartDrawer
       open={cartOpen}
