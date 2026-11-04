@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: basic-ecommerce-api
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/basic_ecommerce}
+    username: ${SPRING_DATASOURCE_USERNAME:basic_ecommerce}
+    password: ${SPRING_DATASOURCE_PASSWORD:basic_ecommerce_dev}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+server:
+  port: 8080

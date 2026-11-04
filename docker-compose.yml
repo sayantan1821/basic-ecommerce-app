@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-basic_ecommerce}
+      POSTGRES_USER: ${POSTGRES_USER:-basic_ecommerce}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-basic_ecommerce_dev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-basic_ecommerce} -d ${POSTGRES_DB:-basic_ecommerce}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-basic_ecommerce}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-basic_ecommerce}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-basic_ecommerce_dev}
+      DEMO_API_TOKEN: ${DEMO_API_TOKEN:-local-demo-token}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-local-webhook-secret-change-me}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
