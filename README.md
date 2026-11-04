@@ -23,7 +23,7 @@ All credentials in `.env.example` are local demo values only.
 
 - `GET /api/products` returns active products from PostgreSQL, including `imageUrls` (array), INR price in paise, and available stock.
 - Flyway migration `V1__create_products.sql` creates and seeds the initial five-product catalog once. The seed data is local; the UI does not call DummyJSON at runtime.
-- Product images are returned as an array and the catalog cards provide previous/next carousel controls. The guest cart is stored in browser local storage. It supports add, remove, quantity changes (up to 10 and available stock), subtotal calculation, and an empty-cart state. Checkout stays disabled until the login/checkout slice is implemented.
+- Product images are returned as an array and the catalog cards provide previous/next carousel controls. The guest cart is stored in browser local storage. It supports add, remove, quantity changes (up to 10 and available stock), subtotal calculation, and an empty-cart state.
 
 
 ## Checkout API (backend slice)
@@ -38,4 +38,12 @@ All credentials in `.env.example` are local demo values only.
 }
 ```
 
-Stock is conditionally reserved inside the same PostgreSQL transaction that writes order, item snapshots, mock payment intent, and idempotency record. If any item cannot be reserved, the transaction rolls back all stock changes. The mock payment remains `PENDING`; webhook completion is a later slice. The frontend passes the shared demo token as a build-time Vite value (`DEMO_API_TOKEN`), which is exposed in the browser bundle by design and must never be treated as a real secret. Checkout shows a demo-access confirmation before sending the request.
+Stock is conditionally reserved inside the same PostgreSQL transaction that writes the order, item snapshots, Stripe payment record, and idempotency record. If any item cannot be reserved, the transaction rolls back all stock changes. The payment remains `PENDING` until Stripe reports its outcome through a verified webhook. The frontend passes the shared demo token as a build-time Vite value (`DEMO_API_TOKEN`), which is exposed in the browser bundle by design and must never be treated as a real secret. Checkout shows a demo-access confirmation before sending the request.
+
+## Stripe test checkout
+
+- Set `STRIPE_SECRET_KEY` to a Stripe test-mode secret key and `STRIPE_WEBHOOK_SECRET` to the signing secret from Stripe CLI or your Stripe webhook endpoint. Keep both values in `.env`; neither belongs in the frontend bundle.
+- After `POST /api/checkout` reserves stock and creates the order/payment records, `POST /api/payments/{paymentId}/stripe-session` creates or reuses an idempotent Stripe Checkout Session. The frontend redirects to Stripe-hosted Checkout.
+- Configure Stripe to send `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, and `checkout.session.expired` to `POST /webhooks/stripe`. The endpoint verifies Stripe's signature against the raw request body.
+- Verified event IDs are deduplicated in `webhook_events` with the order/payment update. A successful paid session confirms the order. Failed or expired sessions transition the order and release its reserved stock. The browser return URL only displays database status; it cannot mark an order paid.
+- For local testing, run `stripe listen --forward-to localhost:8080/webhooks/stripe` and put the displayed `whsec_...` value into `STRIPE_WEBHOOK_SECRET`. Use Stripe's test card `4242 4242 4242 4242`, any future expiry, and any CVC.

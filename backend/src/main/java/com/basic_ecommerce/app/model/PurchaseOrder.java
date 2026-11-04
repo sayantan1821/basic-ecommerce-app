@@ -37,4 +37,20 @@ public class PurchaseOrder {
     public String getStatus() { return status; }
     public long getSubtotalPaise() { return subtotalPaise; }
     public long getTotalPaise() { return totalPaise; }
+    public String getCurrency() { return currency; }
+
+    public void confirm(Instant now) {
+        this.status = "CONFIRMED";
+        this.updatedAt = now;
+    }
+
+    public void markPaymentFailed(Instant now) {
+        this.status = "PAYMENT_FAILED";
+        this.updatedAt = now;
+    }
+
+    public void expire(Instant now) {
+        this.status = "EXPIRED";
+        this.updatedAt = now;
+    }
 }

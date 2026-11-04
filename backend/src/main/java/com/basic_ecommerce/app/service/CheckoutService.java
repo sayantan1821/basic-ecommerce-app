@@ -110,9 +110,8 @@ public class CheckoutService {
         }
         orderItems.saveAll(snapshots);
 
-        String providerReference = "mock_" + UUID.randomUUID();
-        String mockClientSecret = "mock_secret_" + UUID.randomUUID();
-        Payment payment = payments.save(new Payment(UUID.randomUUID(), orderId, providerReference, totalPaise, mockClientSecret, now));
+        String providerReference = "stripe_pending_" + UUID.randomUUID();
+        Payment payment = payments.save(new Payment(UUID.randomUUID(), orderId, providerReference, totalPaise, now));
         idempotencies.save(new CheckoutIdempotency(idempotencyKey, requestHash, orderId, now));
         return toResponse(order, payment, false);
     }
@@ -156,7 +155,7 @@ public class CheckoutService {
     private static CheckoutResponse toResponse(PurchaseOrder order, Payment payment, boolean replayed) {
         return new CheckoutResponse(
                 new CheckoutResponse.OrderSummary(order.getReferenceId(), order.getStatus(), "INR", order.getTotalPaise()),
-                new CheckoutResponse.PaymentSummary(payment.getId(), payment.getStatus(), payment.getMockClientSecret()),
+                new CheckoutResponse.PaymentSummary(payment.getId(), payment.getStatus()),
                 replayed);
     }
 

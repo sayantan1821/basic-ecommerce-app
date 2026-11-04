@@ -28,4 +28,5 @@ public class CheckoutController {
         CheckoutResponse response = checkoutService.checkout(idempotencyKey, request);
         return ResponseEntity.status(response.replayed() ? HttpStatus.OK : HttpStatus.CREATED).body(response);
     }
+
 }

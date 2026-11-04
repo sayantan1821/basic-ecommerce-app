@@ -21,7 +21,9 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-basic_ecommerce}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-basic_ecommerce_dev}
       DEMO_API_TOKEN: ${DEMO_API_TOKEN:-local-demo-token}
-      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-local-webhook-secret-change-me}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:8080}
     depends_on:
       db:
         condition: service_healthy

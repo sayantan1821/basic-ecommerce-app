@@ -1,6 +1,7 @@
 package com.basic_ecommerce.app.controller;
 
 import com.basic_ecommerce.app.service.CheckoutException;
+import com.basic_ecommerce.app.service.WebhookException;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +13,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(WebhookException.class)
+    public ResponseEntity<?> handleWebhook(WebhookException exception) {
+        return ResponseEntity.status(exception.getStatus()).body(error(exception.getCode(), exception.getMessage()));
+    }
+
     @ExceptionHandler(CheckoutException.class)
     public ResponseEntity<?> handleCheckout(CheckoutException exception) {
         return ResponseEntity.status(exception.getStatus()).body(error(exception.getCode(), exception.getMessage()));
@@ -27,9 +33,9 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler({HttpMessageNotReadableException.class, MissingRequestHeaderException.class})
     public ResponseEntity<?> handleMalformedRequest(Exception exception) {
-        String message = exception instanceof MissingRequestHeaderException
-                ? "The Idempotency-Key header is required."
-                : "Request body must be valid JSON matching the checkout contract.";
+        String message = exception instanceof MissingRequestHeaderException missing
+                ? "The " + missing.getHeaderName() + " header is required."
+                : "Request body must be valid JSON.";
         return ResponseEntity.badRequest().body(error("INVALID_REQUEST", message));
     }
 

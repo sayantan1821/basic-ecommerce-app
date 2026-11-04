@@ -30,4 +30,9 @@ public class OrderItem {
         this.quantity = quantity;
         this.lineTotalPaise = lineTotalPaise;
     }
+
+    public String getProductNameSnapshot() { return productNameSnapshot; }
+    public UUID getProductId() { return productId; }
+    public long getUnitPricePaise() { return unitPricePaise; }
+    public int getQuantity() { return quantity; }
 }

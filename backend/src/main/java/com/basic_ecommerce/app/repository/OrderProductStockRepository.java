@@ -13,4 +13,9 @@ public interface OrderProductStockRepository extends JpaRepository<Product, UUID
     @Transactional
     @Query("UPDATE Product p SET p.stockAvailable = p.stockAvailable - :quantity WHERE p.id = :productId AND p.active = true AND p.stockAvailable >= :quantity")
     int reserveStock(@Param("productId") UUID productId, @Param("quantity") int quantity);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Transactional
+    @Query("UPDATE Product p SET p.stockAvailable = p.stockAvailable + :quantity WHERE p.id = :productId")
+    int releaseStock(@Param("productId") UUID productId, @Param("quantity") int quantity);
 }

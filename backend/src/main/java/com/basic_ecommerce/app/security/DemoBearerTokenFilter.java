@@ -21,7 +21,13 @@ public class DemoBearerTokenFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !"POST".equalsIgnoreCase(request.getMethod()) || !"/api/checkout".equals(request.getServletPath());
+        String path = request.getServletPath();
+        boolean checkout = "POST".equalsIgnoreCase(request.getMethod()) && "/api/checkout".equals(path);
+        boolean stripeSession = "POST".equalsIgnoreCase(request.getMethod())
+                && path.matches("/api/payments/[0-9a-fA-F-]{36}/stripe-session");
+        boolean orderStatus = "GET".equalsIgnoreCase(request.getMethod())
+                && path.matches("/api/orders/by-reference/[0-9a-fA-F-]{36}");
+        return !(checkout || stripeSession || orderStatus);
     }
 
     @Override
