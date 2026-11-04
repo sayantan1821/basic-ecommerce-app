@@ -1,6 +1,7 @@
 package com.basic_ecommerce.app.controller;
 
 import com.basic_ecommerce.app.service.CheckoutException;
+import com.basic_ecommerce.app.service.AuthException;
 import com.basic_ecommerce.app.service.WebhookException;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -13,6 +14,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(AuthException.class)
+    public ResponseEntity<?> handleAuth(AuthException exception) {
+        return ResponseEntity.status(exception.getStatus()).body(error("AUTHENTICATION_FAILED", exception.getMessage()));
+    }
+
     @ExceptionHandler(WebhookException.class)
     public ResponseEntity<?> handleWebhook(WebhookException exception) {
         return ResponseEntity.status(exception.getStatus()).body(error(exception.getCode(), exception.getMessage()));

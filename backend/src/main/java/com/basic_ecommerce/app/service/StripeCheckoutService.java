@@ -44,14 +44,14 @@ public class StripeCheckoutService {
     }
 
     @Transactional
-    public StripeCheckoutResponse createSession(UUID paymentId) {
+    public StripeCheckoutResponse createSession(UUID paymentId, UUID userId) {
         if (!stripeSecretKey.startsWith("sk_test_") && !stripeSecretKey.startsWith("rk_test_")) {
             throw new CheckoutException("STRIPE_TEST_KEY_REQUIRED", "Set STRIPE_SECRET_KEY to a Stripe test-mode secret key.", HttpStatus.SERVICE_UNAVAILABLE);
         }
         Payment payment = payments.findByIdForUpdate(paymentId)
                 .orElseThrow(() -> new CheckoutException("PAYMENT_NOT_FOUND", "Payment was not found.", HttpStatus.NOT_FOUND));
-        PurchaseOrder order = orders.findById(payment.getOrderId())
-                .orElseThrow(() -> new IllegalStateException("Payment has no order"));
+        PurchaseOrder order = orders.findByIdAndUserId(payment.getOrderId(), userId)
+                .orElseThrow(() -> new CheckoutException("PAYMENT_NOT_FOUND", "Payment was not found.", HttpStatus.NOT_FOUND));
 
         if (!"PENDING".equals(payment.getStatus()) || !"PENDING_PAYMENT".equals(order.getStatus())) {
             throw new CheckoutException("PAYMENT_NOT_PENDING", "This order is no longer awaiting payment.", HttpStatus.CONFLICT);

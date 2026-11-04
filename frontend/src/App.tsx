@@ -4,26 +4,10 @@ import { CheckoutAccessModal } from './components/CheckoutAccessModal'
 import { OrderStatusPage } from './components/OrderStatusPage'
 import { PaymentReturnModal } from './components/PaymentReturnModal'
 import { ProductCatalog } from './components/ProductCatalog'
-import type { ApiError, Cart, CartItem, CheckoutResult, OrderStatus, Product, StripeCheckoutSession } from './types/store'
+import type { ApiError, Cart, CartItem, CheckoutResult, OrderStatus, Product, SessionResponse, StripeCheckoutSession } from './types/store'
 
 const CART_KEY = 'basic-ecommerce-guest-cart'
 const SESSION_KEY = 'basic-ecommerce-demo-session-token'
-const ORDER_REFERENCES_KEY = 'basic-ecommerce-order-references'
-const demoToken = import.meta.env.VITE_DEMO_API_TOKEN ?? ''
-
-function readOrderReferences(): string[] {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(ORDER_REFERENCES_KEY) ?? '[]')
-    return Array.isArray(value) ? [...new Set(value.filter((reference): reference is string => typeof reference === 'string' && reference.length > 0))] : []
-  } catch {
-    return []
-  }
-}
-
-function rememberOrder(referenceId: string) {
-  const references = readOrderReferences()
-  if (!references.includes(referenceId)) localStorage.setItem(ORDER_REFERENCES_KEY, JSON.stringify([referenceId, ...references]))
-}
 
 function readCart(): Cart {
   try {
@@ -43,9 +27,9 @@ function App() {
   const [cartOpen, setCartOpen] = useState(false)
   const [imageIndexes, setImageIndexes] = useState<Record<string, number>>({})
   const [sessionToken, setSessionToken] = useState(() => localStorage.getItem(SESSION_KEY) ?? '')
-  const [orderReferences, setOrderReferences] = useState<string[]>(readOrderReferences)
-  const [activePage, setActivePage] = useState(() => window.location.pathname === '/orders' ? 'orders' : 'home')
+  const [activePage, setActivePage] = useState(() => window.location.pathname === '/orders' && Boolean(localStorage.getItem(SESSION_KEY)) ? 'orders' : 'home')
   const [demoLoginOpen, setDemoLoginOpen] = useState(false)
+  const [checkoutAfterLogin, setCheckoutAfterLogin] = useState(false)
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false)
   const [checkoutError, setCheckoutError] = useState('')
   const [paymentReturnMode, setPaymentReturnMode] = useState<'success' | 'cancelled' | null>(null)
@@ -78,10 +62,6 @@ function App() {
     setPaymentReturnMode(mode)
     const reference = params.get('order') ?? ''
     setPaymentReturnReference(reference)
-    if (reference) {
-      rememberOrder(reference)
-      setOrderReferences(readOrderReferences())
-    }
     if (mode === 'success') setCart({})
   }, [])
 
@@ -90,6 +70,14 @@ function App() {
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
+
+  useEffect(() => {
+    if (!sessionToken && window.location.pathname === '/orders') window.history.replaceState({}, '', '/')
+  }, [])
+
+  useEffect(() => {
+    if (!sessionToken && activePage === 'orders') navigate('/')
+  }, [sessionToken, activePage])
 
   const items = useMemo<CartItem[]>(() => products.filter(product => cart[product.id] > 0).map(product => ({ product, quantity: cart[product.id] })), [products, cart])
   const count = items.reduce((sum, item) => sum + item.quantity, 0)
@@ -108,15 +96,13 @@ function App() {
     })
   }
 
-  async function submitCheckout() {
-    const token = sessionToken || demoToken
+  async function submitCheckout(tokenOverride?: string) {
+    const token = tokenOverride || sessionToken
     if (!token) {
-      setCheckoutError('No demo token is configured. Set DEMO_API_TOKEN in .env and rebuild the frontend.')
+      setCheckoutAfterLogin(true)
+      setCheckoutError('Please log in to continue to checkout.')
+      setDemoLoginOpen(true)
       return
-    }
-    if (!sessionToken) {
-      localStorage.setItem(SESSION_KEY, token)
-      setSessionToken(token)
     }
     const requestItems = items.map(({ product, quantity }) => ({ productId: product.id, quantity })).sort((a, b) => a.productId.localeCompare(b.productId))
     const fingerprint = JSON.stringify(requestItems)
@@ -135,8 +121,6 @@ function App() {
       if (response.status === 401 || response.status === 403) expireSession()
       if (!response.ok) throw new Error((payload as ApiError).error?.message ?? `Checkout failed (${response.status}).`)
       const checkout = payload as CheckoutResult
-      rememberOrder(checkout.order.referenceId)
-      setOrderReferences(readOrderReferences())
       const sessionResponse = await fetch(`/api/payments/${checkout.payment.id}/stripe-session`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -167,7 +151,7 @@ function App() {
         const attempts = paymentReturnMode === 'success' ? 20 : 1
         for (let attempt = 0; attempt < attempts; attempt += 1) {
           const response = await fetch(`/api/orders/by-reference/${paymentReturnReference}`, {
-            headers: { Authorization: `Bearer ${sessionToken || demoToken}` },
+            headers: { Authorization: `Bearer ${sessionToken}` },
           })
           const payload = await response.json() as OrderStatus | ApiError
           if (response.status === 401 || response.status === 403) expireSession()
@@ -207,7 +191,40 @@ function App() {
       void submitCheckout()
       return
     }
+    setCheckoutAfterLogin(true)
     setDemoLoginOpen(true)
+  }
+
+  function openLogin() {
+    setCheckoutError('')
+    setCheckoutAfterLogin(false)
+    setDemoLoginOpen(true)
+  }
+
+  async function authenticate(path: '/login' | '/signup' | '/demo', body?: Record<string, string>) {
+    setCheckoutSubmitting(true)
+    setCheckoutError('')
+    try {
+      const response = await fetch(`/api/auth${path}`, {
+        method: 'POST',
+        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      })
+      const payload = await response.json() as SessionResponse | ApiError
+      if (!response.ok) throw new Error((payload as ApiError).error?.message ?? `Authentication failed (${response.status}).`)
+      const session = payload as SessionResponse
+      localStorage.setItem(SESSION_KEY, session.token)
+      setSessionToken(session.token)
+      setDemoLoginOpen(false)
+      if (checkoutAfterLogin) {
+        setCheckoutAfterLogin(false)
+        await submitCheckout(session.token)
+      }
+    } catch (cause) {
+      setCheckoutError(cause instanceof Error ? cause.message : 'Could not authenticate. Please try again.')
+    } finally {
+      setCheckoutSubmitting(false)
+    }
   }
 
   function navigate(path: '/orders' | '/') {
@@ -215,17 +232,12 @@ function App() {
     setActivePage(path === '/orders' ? 'orders' : 'home')
   }
 
-  function signInDemo() {
-    if (!demoToken) {
-      setCheckoutError('No demo token is configured. Set DEMO_API_TOKEN in .env and rebuild the frontend.')
-      return
-    }
-    localStorage.setItem(SESSION_KEY, demoToken)
-    setSessionToken(demoToken)
-  }
-
-  function signOut() {
+  async function signOut() {
+    const token = sessionToken
     expireSession()
+    if (token) {
+      try { await fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }) } catch { /* local sign-out still completes offline */ }
+    }
   }
 
   function closePaymentReturn() {
@@ -239,17 +251,18 @@ function App() {
     <header className="topbar">
       <a className="brand" href="/" onClick={event => { event.preventDefault(); navigate('/') }}>BASIC<span>FIT</span></a>
       <nav className="topbar-actions" aria-label="Main navigation">
-        <a className={`nav-link ${activePage === 'orders' ? 'active' : ''}`} href="/orders" onClick={event => { event.preventDefault(); navigate('/orders') }}>Your orders</a>
+        {sessionToken
+          ? <a className={`nav-link ${activePage === 'orders' ? 'active' : ''}`} href="/orders" onClick={event => { event.preventDefault(); navigate('/orders') }}>Your orders</a>
+          : <button className="nav-link" onClick={openLogin}>Log in</button>}
         {sessionToken && <button className="nav-link sign-out" onClick={signOut}>Sign out</button>}
         <button className="cart-trigger" onClick={() => setCartOpen(true)}>Your cart <strong>{count}</strong></button>
       </nav>
     </header>
 
     {activePage === 'orders' ? <OrderStatusPage
-      references={orderReferences}
       token={sessionToken}
       loginError={checkoutError}
-      onSignIn={signInDemo}
+      onSignIn={openLogin}
       onSessionExpired={expireSession}
       onBack={() => navigate('/')}
     /> : <><section className="hero">
@@ -288,8 +301,10 @@ function App() {
       open={demoLoginOpen}
       submitting={checkoutSubmitting}
       error={checkoutError}
-      onClose={() => setDemoLoginOpen(false)}
-      onContinue={() => void submitCheckout()}
+      onClose={() => { setDemoLoginOpen(false); setCheckoutAfterLogin(false) }}
+      onLogin={(email, password) => void authenticate('/login', { email, password })}
+      onSignup={(displayName, email, password) => void authenticate('/signup', { displayName, email, password })}
+      onDemoLogin={() => void authenticate('/demo')}
     />
     {paymentReturnMode && <PaymentReturnModal
       mode={paymentReturnMode}

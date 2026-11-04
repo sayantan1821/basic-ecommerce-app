@@ -3,7 +3,6 @@ import type { ApiError, OrderStatus } from '../types/store'
 import { formatPrice } from '../utils/formatPrice'
 
 type OrderStatusPageProps = {
-  references: string[]
   token: string
   loginError: string
   onSignIn: () => void
@@ -11,35 +10,31 @@ type OrderStatusPageProps = {
   onBack: () => void
 }
 
-export function OrderStatusPage({ references, token, loginError, onSignIn, onSessionExpired, onBack }: OrderStatusPageProps) {
+export function OrderStatusPage({ token, loginError, onSignIn, onSessionExpired, onBack }: OrderStatusPageProps) {
   const [orders, setOrders] = useState<OrderStatus[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(Boolean(token))
   const [error, setError] = useState('')
 
   const loadOrders = useCallback(async () => {
-    if (!token || !references.length) {
+    if (!token) {
       setOrders([])
+      setLoading(false)
       return
     }
     setLoading(true)
     setError('')
     try {
-      const results = await Promise.all(references.map(async referenceId => {
-        const response = await fetch(`/api/orders/by-reference/${encodeURIComponent(referenceId)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const payload = await response.json() as OrderStatus | ApiError
-        if (response.status === 401 || response.status === 403) onSessionExpired()
-        if (!response.ok) throw new Error((payload as ApiError).error?.message ?? `Could not load an order (${response.status}).`)
-        return payload as OrderStatus
-      }))
-      setOrders(results)
+      const response = await fetch('/api/orders', { headers: { Authorization: `Bearer ${token}` } })
+      const payload = await response.json() as OrderStatus[] | ApiError
+      if (response.status === 401 || response.status === 403) onSessionExpired()
+      if (!response.ok) throw new Error((payload as ApiError).error?.message ?? `Could not load your orders (${response.status}).`)
+      setOrders(payload as OrderStatus[])
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load order status.')
     } finally {
       setLoading(false)
     }
-  }, [onSessionExpired, references, token])
+  }, [onSessionExpired, token])
 
   useEffect(() => { void loadOrders() }, [loadOrders])
 
@@ -54,10 +49,10 @@ export function OrderStatusPage({ references, token, loginError, onSignIn, onSes
       <p>Your order history is available with the demo checkout session.</p>
       {loginError && <p className="checkout-error" role="alert">{loginError}</p>}
       <button className="dark-button" onClick={onSignIn}>Log in</button>
-    </div> : !references.length ? <div className="orders-empty status-panel">
+    </div> : !loading && !orders.length && !error ? <div className="orders-empty status-panel">
       <h2>No orders yet</h2><p>Orders you place will appear here with their payment status.</p>
     </div> : <>
-      <div className="orders-toolbar"><span>{references.length} {references.length === 1 ? 'order' : 'orders'}</span><button className="text-button" disabled={loading} onClick={() => void loadOrders()}>{loading ? 'Refreshing…' : 'Refresh status'}</button></div>
+      <div className="orders-toolbar"><span>{orders.length} {orders.length === 1 ? 'order' : 'orders'}</span><button className="text-button" disabled={loading} onClick={() => void loadOrders()}>{loading ? 'Refreshing…' : 'Refresh status'}</button></div>
       {error && <div className="orders-error" role="alert"><p>{error}</p><button className="text-button" onClick={() => void loadOrders()}>Try again</button></div>}
       {loading && !orders.length && <div className="status-panel">Loading your orders…</div>}
       {!!orders.length && <div className="orders-list">{orders.map(order => <article className="order-card" key={order.referenceId}>

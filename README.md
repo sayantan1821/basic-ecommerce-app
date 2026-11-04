@@ -28,7 +28,7 @@ All credentials in `.env.example` are local demo values only.
 
 ## Checkout API (backend slice)
 
-`POST /api/checkout` requires `Authorization: Bearer <DEMO_API_TOKEN>` and an `Idempotency-Key` header. The body contains product IDs and quantities only; prices and totals are calculated from PostgreSQL. A successful first request returns `201`; a same-key, same-cart retry returns the original order/payment with `200`. Reusing the key for a different cart returns `409`.
+`POST /api/checkout` requires a valid `Authorization: Bearer <session-token>` and an `Idempotency-Key` header. The body contains product IDs and quantities only; prices and totals are calculated from PostgreSQL. A successful first request returns `201`; a same-key, same-cart retry returns the original order/payment with `200`. Reusing the key for a different cart returns `409`.
 
 ```json
 {
@@ -38,13 +38,22 @@ All credentials in `.env.example` are local demo values only.
 }
 ```
 
-Stock is conditionally reserved inside the same PostgreSQL transaction that writes the order, item snapshots, Stripe payment record, and idempotency record. If any item cannot be reserved, the transaction rolls back all stock changes. The payment remains `PENDING` until Stripe reports its outcome through a verified webhook. The frontend passes the shared demo token as a build-time Vite value (`DEMO_API_TOKEN`), which is exposed in the browser bundle by design and must never be treated as a real secret. On first checkout, the demo access prompt stores that token in local storage so future checkouts do not prompt again. “Sign out” removes the locally stored token. This is a take-home demo session, not production authentication.
+Stock is conditionally reserved inside the same PostgreSQL transaction that writes the order, item snapshots, Stripe payment record, and idempotency record. If any item cannot be reserved, the transaction rolls back all stock changes. The payment remains `PENDING` until Stripe reports its outcome through a verified webhook.
+
+## Authentication
+
+- `POST /api/auth/signup` creates a user account and returns a bearer session. Passwords are stored as BCrypt hashes.
+- `POST /api/auth/login` validates an email and password. `POST /api/auth/demo` starts a session for the migration-seeded demo user, without creating the user at runtime.
+- Demo credentials: `demo@basicfit.local` / `demo12345`.
+- Opaque random session tokens expire after 12 hours. Only a SHA-256 hash of each token is stored in PostgreSQL. `POST /api/auth/logout` revokes the current session.
+- All `/api/**` endpoints require a valid session except `GET /api/products`, `GET /api/health`, and the login, signup, and demo session endpoints. Checkout is recorded for the authenticated user, order status and Stripe sessions are owner-scoped, and idempotency keys are scoped per account. Stripe webhooks use Stripe signature verification.
+- The frontend stores the session token in local storage, displays “Your orders” only while signed in, and clears the token on sign out. Google and Apple login buttons are shown as disabled options.
 
 ## Order status
 
-- The “Your orders” page at `/orders` lists order references created by this browser and retrieves their current order and payment states from the backend.
-- Order references are kept in local storage, so the page can be revisited after closing the tab. Refresh status to retrieve the latest state after Stripe webhook processing.
-- The backend currently uses one shared demo bearer token and does not associate orders with individual users. The browser's order list is therefore a convenience for this demo rather than an account-scoped order history.
+- The “Your orders” page at `/orders` is hidden until signed in. It loads the signed-in user's complete order history and latest payment states from `GET /api/orders`, so the history works across devices.
+- Refresh status to retrieve the latest state after Stripe webhook processing.
+- Migration `V8__scope_orders_and_idempotency_by_user.sql` associates earlier orders and idempotency records with the demo user, then stores account ownership on new checkouts.
 
 ## Stripe test checkout
 

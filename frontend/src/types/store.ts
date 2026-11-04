@@ -20,6 +20,13 @@ export type CheckoutResult = {
 
 export type StripeCheckoutSession = { sessionId: string; checkoutUrl: string }
 
+export type SessionResponse = {
+  token: string
+  tokenType: string
+  expiresAt: string
+  user: { email: string; displayName: string }
+}
+
 export type OrderStatus = {
   referenceId: string
   orderStatus: string

@@ -6,6 +6,8 @@ import com.basic_ecommerce.app.repository.PurchaseOrderRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.UUID;
+import java.util.List;
 
 @Service
 public class OrderStatusService {
@@ -18,11 +20,16 @@ public class OrderStatusService {
     }
 
     @Transactional(readOnly = true)
-    public OrderStatusResponse byReference(String referenceId) {
-        var order = orders.findByReferenceId(referenceId)
+    public OrderStatusResponse byReference(String referenceId, UUID userId) {
+        var order = orders.findByReferenceIdAndUserId(referenceId, userId)
                 .orElseThrow(() -> new CheckoutException("ORDER_NOT_FOUND", "Order was not found.", HttpStatus.NOT_FOUND));
         var payment = payments.findByOrderId(order.getId())
                 .orElseThrow(() -> new IllegalStateException("Order has no payment"));
         return new OrderStatusResponse(order.getReferenceId(), order.getStatus(), payment.getStatus(), order.getCurrency(), order.getTotalPaise());
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrderStatusResponse> listForUser(UUID userId) {
+        return orders.findOrderStatusesByUserId(userId);
     }
 }

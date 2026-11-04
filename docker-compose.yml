@@ -20,7 +20,6 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-basic_ecommerce}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-basic_ecommerce}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-basic_ecommerce_dev}
-      DEMO_API_TOKEN: ${DEMO_API_TOKEN:-local-demo-token}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:8080}
@@ -31,8 +30,6 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        VITE_DEMO_API_TOKEN: ${DEMO_API_TOKEN:-local-demo-token}
     ports:
       - "8080:80"
     depends_on:

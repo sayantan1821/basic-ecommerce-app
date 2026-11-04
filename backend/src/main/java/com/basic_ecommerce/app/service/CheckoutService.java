@@ -4,6 +4,7 @@ import com.basic_ecommerce.app.dto.CheckoutItemRequest;
 import com.basic_ecommerce.app.dto.CheckoutRequest;
 import com.basic_ecommerce.app.dto.CheckoutResponse;
 import com.basic_ecommerce.app.model.CheckoutIdempotency;
+import com.basic_ecommerce.app.model.CheckoutIdempotencyId;
 import com.basic_ecommerce.app.model.OrderItem;
 import com.basic_ecommerce.app.model.Payment;
 import com.basic_ecommerce.app.model.Product;
@@ -57,21 +58,22 @@ public class CheckoutService {
     }
 
     @Transactional
-    public CheckoutResponse checkout(String idempotencyKey, CheckoutRequest request) {
+    public CheckoutResponse checkout(String idempotencyKey, CheckoutRequest request, UUID userId) {
         validateKey(idempotencyKey);
+        CheckoutIdempotencyId idempotencyId = new CheckoutIdempotencyId(userId, idempotencyKey);
         TreeMap<UUID, Integer> quantities = normalize(request);
         String requestHash = hashRequest(quantities);
 
         // Serialize the same key across requests, including concurrent requests on multiple instances.
         jdbcTemplate.execute((ConnectionCallback<Void>) connection -> {
             try (var statement = connection.prepareStatement("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))")) {
-                statement.setString(1, idempotencyKey);
+                statement.setString(1, userId + ":" + idempotencyKey);
                 statement.execute();
             }
             return null;
         });
 
-        var previous = idempotencies.findById(idempotencyKey);
+        var previous = idempotencies.findById(idempotencyId);
         if (previous.isPresent()) {
             if (!previous.get().getRequestHash().equals(requestHash)) {
                 throw new CheckoutException("IDEMPOTENCY_KEY_REUSED",
@@ -100,7 +102,7 @@ public class CheckoutService {
         Instant now = Instant.now();
         UUID orderId = UUID.randomUUID();
         String referenceId = UUID.randomUUID().toString();
-        PurchaseOrder order = orders.saveAndFlush(new PurchaseOrder(orderId, referenceId, totalPaise, now));
+        PurchaseOrder order = orders.saveAndFlush(new PurchaseOrder(orderId, referenceId, totalPaise, userId, now));
 
         List<OrderItem> snapshots = new ArrayList<>();
         for (Map.Entry<UUID, Integer> entry : quantities.entrySet()) {
@@ -112,7 +114,7 @@ public class CheckoutService {
 
         String providerReference = "stripe_pending_" + UUID.randomUUID();
         Payment payment = payments.save(new Payment(UUID.randomUUID(), orderId, providerReference, totalPaise, now));
-        idempotencies.save(new CheckoutIdempotency(idempotencyKey, requestHash, orderId, now));
+        idempotencies.save(new CheckoutIdempotency(idempotencyId, requestHash, orderId, now));
         return toResponse(order, payment, false);
     }
 

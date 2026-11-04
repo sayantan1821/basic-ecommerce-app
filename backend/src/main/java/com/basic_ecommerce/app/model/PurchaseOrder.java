@@ -12,6 +12,7 @@ import java.util.UUID;
 public class PurchaseOrder {
     @Id private UUID id;
     @Column(name = "reference_id", nullable = false, unique = true) private String referenceId;
+    @Column(name = "user_id", nullable = false) private UUID userId;
     @Column(nullable = false) private String status;
     @Column(nullable = false) private String currency;
     @Column(name = "subtotal_paise", nullable = false) private long subtotalPaise;
@@ -21,9 +22,10 @@ public class PurchaseOrder {
 
     protected PurchaseOrder() {}
 
-    public PurchaseOrder(UUID id, String referenceId, long totalPaise, Instant now) {
+    public PurchaseOrder(UUID id, String referenceId, long totalPaise, UUID userId, Instant now) {
         this.id = id;
         this.referenceId = referenceId;
+        this.userId = userId;
         this.status = "PENDING_PAYMENT";
         this.currency = "INR";
         this.subtotalPaise = totalPaise;
@@ -33,6 +35,7 @@ public class PurchaseOrder {
     }
 
     public UUID getId() { return id; }
+    public UUID getUserId() { return userId; }
     public String getReferenceId() { return referenceId; }
     public String getStatus() { return status; }
     public long getSubtotalPaise() { return subtotalPaise; }
