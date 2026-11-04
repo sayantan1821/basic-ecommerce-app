@@ -1,4 +1,4 @@
-package com.basic_ecommerce.app;
+package com.basic_ecommerce.app.controller;
 
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;

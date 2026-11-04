@@ -18,3 +18,9 @@ Nginx serves the SPA and proxies `/api/*` and `/webhooks/*` to the backend. Post
 - `docker-compose.yml`: local three-service stack.
 
 All credentials in `.env.example` are local demo values only.
+
+## Catalog and cart
+
+- `GET /api/products` returns active products from PostgreSQL, including `imageUrls` (array), INR price in paise, and available stock.
+- Flyway migration `V1__create_products.sql` creates and seeds the initial five-product catalog once. The seed data is local; the UI does not call DummyJSON at runtime.
+- Product images are returned as an array and the catalog cards provide previous/next carousel controls. The guest cart is stored in browser local storage. It supports add, remove, quantity changes (up to 10 and available stock), subtotal calculation, and an empty-cart state. Checkout stays disabled until the login/checkout slice is implemented.
