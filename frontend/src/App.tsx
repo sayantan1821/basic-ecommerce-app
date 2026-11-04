@@ -57,6 +57,7 @@ function App() {
     if (mode !== 'success' && mode !== 'cancelled') return
     setPaymentReturnMode(mode)
     setPaymentReturnReference(params.get('order') ?? '')
+    if (mode === 'success') setCart({})
   }, [])
 
   const items = useMemo<CartItem[]>(() => products.filter(product => cart[product.id] > 0).map(product => ({ product, quantity: cart[product.id] })), [products, cart])

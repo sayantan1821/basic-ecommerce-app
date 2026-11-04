@@ -22,11 +22,14 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class StripeWebhookService {
+    private static final Logger logger = LoggerFactory.getLogger(StripeWebhookService.class);
     private final String webhookSecret;
     private final ObjectMapper objectMapper;
     private final JdbcTemplate jdbcTemplate;
@@ -65,8 +68,10 @@ public class StripeWebhookService {
         try {
             verifiedEvent = Webhook.constructEvent(new String(rawBody, StandardCharsets.UTF_8), signature, webhookSecret);
         } catch (SignatureVerificationException exception) {
+            logger.warn("Stripe webhook signature verification failed.");
             throw new WebhookException(HttpStatus.UNAUTHORIZED, "INVALID_SIGNATURE", "Stripe signature did not match the event body.");
         } catch (RuntimeException exception) {
+            logger.warn("Stripe webhook payload could not be parsed: exceptionType={}", exception.getClass().getSimpleName());
             throw new WebhookException(HttpStatus.BAD_REQUEST, "INVALID_WEBHOOK", "Stripe event body must be valid JSON.");
         }
 
@@ -78,13 +83,17 @@ public class StripeWebhookService {
         }
         String eventId = verifiedEvent.getId();
         String eventType = verifiedEvent.getType();
+        logger.info("Received Stripe webhook: eventId={}, eventType={}", eventId, eventType);
         JsonNode session = root.path("data").path("object");
         Instant now = Instant.now();
         int inserted = jdbcTemplate.update(
                 "INSERT INTO webhook_events (provider_event_id, event_type, payload_hash, received_at, result) "
                         + "VALUES (?, ?, ?, ?, 'IGNORED') ON CONFLICT (provider_event_id) DO NOTHING",
                 eventId, eventType, sha256Hex(rawBody), Timestamp.from(now));
-        if (inserted == 0) return new WebhookResult(eventId, "DUPLICATE", true, null, null);
+        if (inserted == 0) {
+            logger.info("Ignored duplicate Stripe webhook: eventId={}, eventType={}", eventId, eventType);
+            return new WebhookResult(eventId, "DUPLICATE", true, null, null);
+        }
 
         if (!isCheckoutEvent(eventType)) {
             markEvent(eventId, "IGNORED", now);
@@ -95,11 +104,13 @@ public class StripeWebhookService {
         try {
             paymentId = UUID.fromString(session.path("metadata").path("paymentId").asText());
         } catch (RuntimeException exception) {
+            logger.warn("Rejected Stripe Checkout webhook without a valid payment ID: eventId={}, eventType={}", eventId, eventType);
             markEvent(eventId, "REJECTED", now);
             return new WebhookResult(eventId, "REJECTED", false, null, null);
         }
         var maybePayment = payments.findByIdForUpdate(paymentId);
         if (maybePayment.isEmpty()) {
+            logger.warn("Rejected Stripe Checkout webhook for unknown payment: eventId={}, eventType={}", eventId, eventType);
             markEvent(eventId, "REJECTED", now);
             return new WebhookResult(eventId, "REJECTED", false, null, null);
         }
@@ -114,6 +125,7 @@ public class StripeWebhookService {
         if (sessionId.isBlank() || (payment.getStripeCheckoutSessionId() != null && !payment.getStripeCheckoutSessionId().equals(sessionId))
                 || !order.getReferenceId().equals(orderReference) || amountTotal != payment.getAmountPaise()
                 || !"inr".equalsIgnoreCase(currency)) {
+            logger.warn("Rejected Stripe Checkout webhook due to session or amount mismatch: eventId={}, eventType={}, paymentId={}", eventId, eventType, paymentId);
             markEvent(eventId, "REJECTED", now);
             return new WebhookResult(eventId, "REJECTED", false, order.getStatus(), payment.getStatus());
         }
@@ -129,6 +141,7 @@ public class StripeWebhookService {
 
         if ("checkout.session.completed".equals(eventType) || "checkout.session.async_payment_succeeded".equals(eventType)) {
             if (!"paid".equalsIgnoreCase(session.path("payment_status").asText())) {
+                logger.info("Stripe Checkout session is not paid yet: eventId={}, paymentId={}, paymentStatus={}", eventId, paymentId, session.path("payment_status").asText());
                 markEvent(eventId, "IGNORED", now);
                 return new WebhookResult(eventId, "IGNORED", false, order.getStatus(), payment.getStatus());
             }
@@ -142,6 +155,8 @@ public class StripeWebhookService {
         }
 
         markEvent(eventId, "PROCESSED", now);
+        logger.info("Processed Stripe Checkout webhook: eventId={}, eventType={}, orderStatus={}, paymentStatus={}",
+                eventId, eventType, order.getStatus(), payment.getStatus());
         return new WebhookResult(eventId, "PROCESSED", false, order.getStatus(), payment.getStatus());
     }
 
