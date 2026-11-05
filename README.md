@@ -24,6 +24,7 @@ All credentials in `.env.example` are local demo values only.
 - `GET /api/products` returns active products from PostgreSQL, including `imageUrls` (array), INR price in paise, and available stock.
 - Flyway migration `V1__create_products.sql` creates and seeds the initial five-product catalog once. The seed data is local; the UI does not call DummyJSON at runtime.
 - Product images are returned as an array and the catalog cards provide previous/next carousel controls. The guest cart is stored in browser local storage. It supports add, remove, quantity changes (up to 10 and available stock), subtotal calculation, and an empty-cart state.
+- Product cards hide the exact inventory count; they display “Only a few left” when five or fewer remain and “Sold out” at zero.
 
 
 ## Checkout API (backend slice)
@@ -53,6 +54,7 @@ Stock is conditionally reserved inside the same PostgreSQL transaction that writ
 
 - The “Your orders” page at `/orders` is hidden until signed in. It loads the signed-in user's complete order history and latest payment states from `GET /api/orders`, so the history works across devices.
 - Refresh status to retrieve the latest state after Stripe webhook processing.
+- Successful payments store `paid_at`, which appears as “Paid on” in the order history and payment confirmation modal. The value is set by the verified Stripe webhook.
 - Migration `V8__scope_orders_and_idempotency_by_user.sql` associates earlier orders and idempotency records with the demo user, then stores account ownership on new checkouts.
 
 ## Stripe test checkout

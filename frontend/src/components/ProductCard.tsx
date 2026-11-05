@@ -12,6 +12,7 @@ type ProductCardProps = {
 }
 
 export function ProductCard({ product, index, quantity, imageIndex, onChangeImage, onSetQuantity, onAdd }: ProductCardProps) {
+  const stockLabel = product.available === 0 ? 'Sold out' : product.available <= 5 ? 'Only a few left' : ''
   return <article className="product-card">
     <div className={`product-image tone-${index % 5}`}>
       <img src={product.imageUrls[imageIndex] ?? product.imageUrls[0]} alt={`${product.name} image ${imageIndex + 1}`} loading="lazy" onError={event => { event.currentTarget.style.opacity = '0' }} />
@@ -25,7 +26,7 @@ export function ProductCard({ product, index, quantity, imageIndex, onChangeImag
       <div className="product-title-row"><h3>{product.name}</h3><strong className="product-price">{formatPrice(product.pricePaise)}</strong></div>
       <p className="product-description">{product.description}</p>
       <div className="product-actions">
-        <span className={product.available ? 'stock' : 'stock out'}>{product.available ? `${product.available} available` : 'Sold out'}</span>
+        <span className={`stock ${product.available === 0 ? 'out' : product.available <= 5 ? 'low-stock' : ''}`}>{stockLabel}</span>
         {quantity ? <div className="quantity-control">
           <button aria-label={`Decrease ${product.name} quantity`} onClick={() => onSetQuantity(product, quantity - 1)}>−</button>
           <span>{quantity}</span>

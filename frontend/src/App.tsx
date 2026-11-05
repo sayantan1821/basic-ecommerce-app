@@ -121,6 +121,22 @@ function App() {
       if (response.status === 401 || response.status === 403) expireSession()
       if (!response.ok) throw new Error((payload as ApiError).error?.message ?? `Checkout failed (${response.status}).`)
       const checkout = payload as CheckoutResult
+      const orderKey = `checkout-idempotency-order:${checkout.order.referenceId}`
+      sessionStorage.setItem(orderKey, storageKey)
+
+      if (checkout.payment.status !== 'PENDING' || checkout.order.status !== 'PENDING_PAYMENT') {
+        sessionStorage.removeItem(storageKey)
+        sessionStorage.removeItem(orderKey)
+        setDemoLoginOpen(false)
+        setCartOpen(false)
+        setPaymentReturnMode('success')
+        setPaymentReturnReference(checkout.order.referenceId)
+        setPaymentReturnStatus(null)
+        setPaymentReturnError('')
+        if (checkout.payment.status === 'SUCCEEDED') setCart({})
+        return
+      }
+
       const sessionResponse = await fetch(`/api/payments/${checkout.payment.id}/stripe-session`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -130,7 +146,19 @@ function App() {
       if (!sessionResponse.ok) throw new Error((sessionPayload as ApiError).error?.message ?? `Could not start Stripe Checkout (${sessionResponse.status}).`)
       setDemoLoginOpen(false)
       setCartOpen(false)
-      window.location.assign((sessionPayload as StripeCheckoutSession).checkoutUrl)
+      const stripeSession = sessionPayload as StripeCheckoutSession
+      if (stripeSession.alreadyCompleted) {
+        sessionStorage.removeItem(storageKey)
+        sessionStorage.removeItem(orderKey)
+        setCart({})
+        setPaymentReturnMode('success')
+        setPaymentReturnReference(checkout.order.referenceId)
+        setPaymentReturnStatus(null)
+        setPaymentReturnError('')
+        return
+      }
+      if (!stripeSession.checkoutUrl) throw new Error('Stripe did not return a Checkout URL. Please retry.')
+      window.location.assign(stripeSession.checkoutUrl)
     } catch (cause) {
       setCheckoutError(cause instanceof Error ? cause.message : 'Checkout failed. Your cart is unchanged; you can safely retry.')
     } finally {
@@ -141,33 +169,29 @@ function App() {
   useEffect(() => {
     if (!paymentReturnMode || !paymentReturnReference) return
     let active = true
-    let timeout: ReturnType<typeof setTimeout> | undefined
 
     async function loadPaymentStatus() {
-      let finalStatus: OrderStatus | null = null
       setPaymentReturnChecking(true)
       setPaymentReturnError('')
       try {
-        const attempts = paymentReturnMode === 'success' ? 20 : 1
-        for (let attempt = 0; attempt < attempts; attempt += 1) {
-          const response = await fetch(`/api/orders/by-reference/${paymentReturnReference}`, {
-            headers: { Authorization: `Bearer ${sessionToken}` },
-          })
-          const payload = await response.json() as OrderStatus | ApiError
-          if (response.status === 401 || response.status === 403) expireSession()
-          if (!response.ok) throw new Error((payload as ApiError).error?.message ?? `Could not load order status (${response.status}).`)
-          const status = payload as OrderStatus
-          if (!active) return
-          finalStatus = status
-          setPaymentReturnStatus(status)
-          if (status.paymentStatus !== 'PENDING' || attempt === attempts - 1) break
-          await new Promise<void>(resolve => { timeout = setTimeout(resolve, 1500) })
-        }
-        if (active && paymentReturnMode === 'success' && finalStatus?.paymentStatus === 'SUCCEEDED') {
+        const response = await fetch(`/api/orders/by-reference/${paymentReturnReference}${paymentReturnMode === 'success' ? '/reconcile' : ''}`, {
+          method: paymentReturnMode === 'success' ? 'POST' : 'GET',
+          headers: { Authorization: `Bearer ${sessionToken}` },
+        })
+        const payload = await response.json() as OrderStatus | ApiError
+        if (response.status === 401 || response.status === 403) expireSession()
+        if (!response.ok) throw new Error((payload as ApiError).error?.message ?? `Could not load order status (${response.status}).`)
+        const status = payload as OrderStatus
+        if (!active) return
+        setPaymentReturnStatus(status)
+        if (paymentReturnMode === 'success' && status.paymentStatus === 'SUCCEEDED') {
           setCart({})
         }
-        if (active && finalStatus && finalStatus.paymentStatus !== 'PENDING') {
-          Object.keys(sessionStorage).filter(key => key.startsWith('checkout-idempotency:')).forEach(key => sessionStorage.removeItem(key))
+        if (status.paymentStatus !== 'PENDING') {
+          const orderKey = `checkout-idempotency-order:${paymentReturnReference}`
+          const idempotencyKey = sessionStorage.getItem(orderKey)
+          if (idempotencyKey) sessionStorage.removeItem(idempotencyKey)
+          sessionStorage.removeItem(orderKey)
         }
       } catch (cause) {
         if (active) setPaymentReturnError(cause instanceof Error ? cause.message : 'Could not load order status.')
@@ -177,7 +201,7 @@ function App() {
     }
 
     void loadPaymentStatus()
-    return () => { active = false; if (timeout) clearTimeout(timeout) }
+    return () => { active = false }
   }, [paymentReturnMode, paymentReturnReference, sessionToken])
 
   const expireSession = useCallback(() => {

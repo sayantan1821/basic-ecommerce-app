@@ -13,7 +13,7 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
     Optional<PurchaseOrder> findByReferenceIdAndUserId(String referenceId, UUID userId);
     Optional<PurchaseOrder> findByIdAndUserId(UUID id, UUID userId);
 
-    @Query("SELECT new com.basic_ecommerce.app.dto.OrderStatusResponse(o.referenceId, o.status, p.status, o.currency, o.totalPaise) " +
+    @Query("SELECT new com.basic_ecommerce.app.dto.OrderStatusResponse(o.referenceId, o.status, p.status, o.currency, o.totalPaise, p.paidAt) " +
             "FROM PurchaseOrder o, Payment p WHERE p.orderId = o.id AND o.userId = :userId ORDER BY o.createdAt DESC")
     List<OrderStatusResponse> findOrderStatusesByUserId(@Param("userId") UUID userId);
 }

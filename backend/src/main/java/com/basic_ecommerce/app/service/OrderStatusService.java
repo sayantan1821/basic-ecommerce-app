@@ -25,7 +25,7 @@ public class OrderStatusService {
                 .orElseThrow(() -> new CheckoutException("ORDER_NOT_FOUND", "Order was not found.", HttpStatus.NOT_FOUND));
         var payment = payments.findByOrderId(order.getId())
                 .orElseThrow(() -> new IllegalStateException("Order has no payment"));
-        return new OrderStatusResponse(order.getReferenceId(), order.getStatus(), payment.getStatus(), order.getCurrency(), order.getTotalPaise());
+        return new OrderStatusResponse(order.getReferenceId(), order.getStatus(), payment.getStatus(), order.getCurrency(), order.getTotalPaise(), payment.getPaidAt());
     }
 
     @Transactional(readOnly = true)

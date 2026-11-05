@@ -1,3 +1,3 @@
 package com.basic_ecommerce.app.dto;
 
-public record StripeCheckoutResponse(String sessionId, String checkoutUrl) {}
+public record StripeCheckoutResponse(String sessionId, String checkoutUrl, boolean alreadyCompleted) {}

@@ -21,6 +21,7 @@ public class Payment {
     @Column(nullable = false) private String status;
     @Column(name = "amount_paise", nullable = false) private long amountPaise;
     @Column(name = "failure_code") private String failureCode;
+    @Column(name = "paid_at") private Instant paidAt;
     @Column(name = "created_at", nullable = false) private Instant createdAt;
     @Column(name = "updated_at", nullable = false) private Instant updatedAt;
 
@@ -47,6 +48,7 @@ public class Payment {
     public String getStripePaymentIntentId() { return stripePaymentIntentId; }
     public long getAmountPaise() { return amountPaise; }
     public String getFailureCode() { return failureCode; }
+    public Instant getPaidAt() { return paidAt; }
 
     public void attachCheckoutSession(String sessionId, String checkoutUrl, Instant expiresAt, Instant now) {
         this.stripeCheckoutSessionId = sessionId;
@@ -64,6 +66,7 @@ public class Payment {
     public void markSucceeded(Instant now) {
         this.status = "SUCCEEDED";
         this.failureCode = null;
+        this.paidAt = now;
         this.updatedAt = now;
     }
 

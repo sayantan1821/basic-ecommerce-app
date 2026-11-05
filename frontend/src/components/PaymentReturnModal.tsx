@@ -1,6 +1,10 @@
 import type { OrderStatus } from '../types/store'
 import { formatPrice } from '../utils/formatPrice'
 
+function formatPaidAt(value: string) {
+  return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+}
+
 type PaymentReturnModalProps = {
   mode: 'success' | 'cancelled'
   order: OrderStatus | null
@@ -35,6 +39,7 @@ export function PaymentReturnModal({ mode, order, checking, error, onClose }: Pa
       <div className="order-result-row"><span>Order status</span><strong>{order.orderStatus}</strong></div>
       <div className="order-result-row"><span>Payment status</span><strong>{order.paymentStatus}</strong></div>
       <div className="order-result-row"><span>Total</span><strong>{formatPrice(order.totalPaise)}</strong></div>
+      {order.paidAt && <div className="order-result-row"><span>Paid on</span><strong>{formatPaidAt(order.paidAt)}</strong></div>}
     </>}
     <button className="dark-button" onClick={onClose}>Back to catalog</button>
   </section></div>

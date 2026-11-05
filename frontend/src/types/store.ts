@@ -18,7 +18,7 @@ export type CheckoutResult = {
   replayed: boolean
 }
 
-export type StripeCheckoutSession = { sessionId: string; checkoutUrl: string }
+export type StripeCheckoutSession = { sessionId: string; checkoutUrl: string | null; alreadyCompleted: boolean }
 
 export type SessionResponse = {
   token: string
@@ -33,6 +33,7 @@ export type OrderStatus = {
   paymentStatus: string
   currency: string
   totalPaise: number
+  paidAt: string | null
 }
 
 export type ApiError = { error?: { message?: string } }

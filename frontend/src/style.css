@@ -12,3 +12,17 @@
 .status-payment_failed,.status-expired{background:#f3e2dc;color:#8b4337}
 
 .login-modal{max-height:min(92vh,820px);overflow:auto}.login-modal h2{margin:11px 0 10px}.login-modal>p:not(.eyebrow):not(.checkout-error){margin-bottom:17px}.login-form{display:grid;gap:12px}.login-form label{display:grid;gap:6px;color:#4f554b;font-size:11px;font-weight:600}.login-form input{height:42px;width:100%;padding:0 11px;border:1px solid #d9d8d0;border-radius:0;background:#fffefa;color:#1b211c;font:inherit;font-weight:400;outline:none}.login-form input:focus{border-color:#637246;box-shadow:0 0 0 2px #63724622}.login-submit{margin-top:4px}.login-divider{display:flex;align-items:center;gap:12px;margin:17px 0;color:#96988e;font-size:10px}.login-divider::before,.login-divider::after{content:"";height:1px;flex:1;background:#e6e4dc}.demo-login-button,.social-login-options button{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;min-height:42px;padding:0 12px;border:1px solid #1b211c;background:transparent;font-size:11px;font-weight:700;cursor:pointer}.demo-login-button:hover{background:#e9ebdf}.social-login-options{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:9px}.social-login-options button{min-height:38px;border-color:#dddbd3;color:#888b80;font-size:10px;cursor:not-allowed}.social-login-options span{display:block}.login-switch{margin:15px 0 0!important;text-align:center;color:#73776d;font-size:10px!important}.login-switch button{padding:0;border:0;background:none;color:#43542c;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
+
+:root{--radius-control:8px;--radius-card:12px;--radius-overlay:16px}
+.brand span{border-radius:4px}
+.product-image,.order-card,.status-panel{border-radius:var(--radius-card)}
+.cart-line-image{border-radius:var(--radius-control)}
+.cart-drawer{border-radius:var(--radius-overlay) 0 0 var(--radius-overlay)}
+.checkout-modal{border-radius:var(--radius-overlay)}
+.dark-button,.checkout-button,.add-button,.demo-login-button,.social-login-options button{border-radius:var(--radius-control)}
+.login-form input,.quantity-control,.orders-error{border-radius:var(--radius-control)}
+.quantity-control{overflow:hidden}
+.product-title-row strong.product-price{border-radius:6px}
+.carousel-position,.status-pill{border-radius:999px}
+.stock.low-stock{color:#8b5e27;font-weight:700}
+.order-card-details{grid-template-columns:repeat(auto-fit,minmax(100px,1fr))}
