@@ -2,6 +2,8 @@
 
 A single-repository D2C checkout take-home built with a React + TypeScript storefront, a Java 21 / Spring Boot API, and PostgreSQL. Docker Compose starts the frontend, API, and database together.
 
+See the prepared [low-level design](docs/low-level-design.md) for the original architecture and build plan, and [implementation status](docs/implementation-status.md) for how the current code differs from that plan.
+
 ## Screenshots
 
 These are real captures from the local demo UI. The demo database is persistent, so its current stock and order history reflect prior checkout activity; a fresh database starts with the five seeded products and original quantities.
@@ -144,4 +146,6 @@ Before final submission, I would put payment behind a small provider interface, 
 - `frontend/`: React, TypeScript, Vite components, and Nginx configuration.
 - `backend/`: Java 21, Spring Boot MVC controllers/services/repositories, JPA, and Flyway migrations.
 - `docker-compose.yml`: frontend, backend, and PostgreSQL services in one local Compose application.
+- `docs/low-level-design.md`: original prepared architecture and build plan.
+- `docs/implementation-status.md`: current API, persistence model, and deviations from the plan.
 - `docs/screenshots/`: local UI screenshots embedded above.
